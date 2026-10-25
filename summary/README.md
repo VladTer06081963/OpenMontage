@@ -36,14 +36,17 @@
 
 ## Текущие пары
 
-| № | Тема | Аудит | Задача |
-|---|---|---|---|
-| 001 | MCP-мост к OpenMontage отсутствует | `audit/001_mcp-bridge_2026-10-25.md` | `tasks/001_mcp-bridge_2026-10-25.md` |
-| 002 | Публичный API для решений — пробел | `audit/002_governance-api_2026-10-25.md` | `tasks/002_governance-api_2026-10-25.md` |
-| 003 | Бюджетный контур: ловушки статусов и персистентность | `audit/003_budget-tracker_2026-10-25.md` | `tasks/003_budget-tracker_2026-10-25.md` |
-| 004 | Долгие генерации без job-режима | `audit/004_long-jobs_2026-10-25.md` | `tasks/004_long-jobs_2026-10-25.md` |
-| 005 | Директорские скиллы не влезают в контекст | `audit/005_skill-context_2026-10-25.md` | `tasks/005_skill-context_2026-10-25.md` |
-| 006 | Связка «проект ↔ внешняя студия» | `audit/006_studio-integration_2026-10-25.md` | `tasks/006_studio-integration_2026-10-25.md` |
+| № | Тема | Аудит | Задача | Статус |
+|---|---|---|---|---|
+| 001 | MCP-мост к OpenMontage отсутствует | `audit/001_mcp-bridge_2026-10-25.md` | `tasks/001_mcp-bridge_2026-10-25.md` | ✅ |
+| 002 | Публичный API для решений — пробел | `audit/002_governance-api_2026-10-25.md` | `tasks/002_governance-api_2026-10-25.md` | ✅ |
+| 003 | Бюджетный контур: ловушки статусов и персистентность | `audit/003_budget-tracker_2026-10-25.md` | `tasks/003_budget-tracker_2026-10-25.md` | ✅ |
+| 004 | Долгие генерации без job-режима | `audit/004_long-jobs_2026-10-25.md` | `tasks/004_long-jobs_2026-10-25.md` | ✅ |
+| 005 | Директорские скиллы не влезают в контекст | `audit/005_skill-context_2026-10-25.md` | `tasks/005_skill-context_2026-10-25.md` | ✅ |
+| 006 | Связка «проект ↔ внешняя студия» | `audit/006_studio-integration_2026-10-25.md` | `tasks/006_studio-integration_2026-10-25.md` | ✅ |
+
+Все шесть пар закрыты 2026-10-25. Мост: `lib/mcp_bridge.py` + `scripts/openmontage_mcp.py`
+— 27 тулов, 64 теста контракта, смоук 21/21.
 
 ## Шаблон аудита
 

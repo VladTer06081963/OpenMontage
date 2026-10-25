@@ -47,11 +47,13 @@ def _load_server_module():
     return module
 
 
-def test_mcp_surface_exposes_only_read_only_tools() -> None:
+def test_mcp_surface_matches_the_governed_contract() -> None:
+    """Phase 1 surface: read + governed write. Nothing unguarded."""
     module = _load_server_module()
     names = {tool.name for tool in asyncio.run(module.server.list_tools())}
 
     assert names == {
+        # phase 0 — read-only
         "om_preflight",
         "om_pipelines",
         "om_pipeline_manifest",
@@ -63,20 +65,53 @@ def test_mcp_surface_exposes_only_read_only_tools() -> None:
         "om_tool_info",
         "om_read_skill",
         "om_context_pack",
+        # phase 1 — governed execution
+        "om_tool_estimate",
+        "om_tool_run",
+        "om_approve_tool",
+        "om_budget",
+        "om_decision_append",
+        "om_decision_read",
+        "om_checkpoint_write",
+        "om_artifact_write",
+        "om_project_init",
+        # phase 1 — background jobs
+        "om_job_status",
+        "om_job_result",
+        "om_job_list",
+        # phase 1 — studio bridge
+        "om_asset_list",
+        "om_media_path",
+        "om_staging_roots",
+        "om_staging_copy",
     }
-    # Nothing in phase 0 may execute a provider tool or write a project.
-    assert not any(
-        marker in name
-        for name in names
-        for marker in ("write", "run", "execute", "approve", "init")
-    )
 
 
-def test_bridge_module_has_no_write_or_execute_entrypoints() -> None:
+def test_write_entrypoints_delegate_to_repository_functions(monkeypatch) -> None:
+    """The bridge must not reimplement governance — it must call the repo."""
+    import lib.checkpoint as checkpoint_mod
     import lib.mcp_bridge as bridge
 
-    forbidden = {"write_checkpoint", "tool_run", "execute", "init_project"}
-    assert not forbidden & set(dir(bridge))
+    seen = {}
+
+    def fake_write_checkpoint(*args, **kwargs):
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return Path("/tmp/checkpoint_x.json")
+
+    monkeypatch.setattr(checkpoint_mod, "write_checkpoint", fake_write_checkpoint)
+    bridge.checkpoint_write("run", "proposal", "awaiting_human", {}, human_approved=False)
+    assert seen["args"][1] == "run"
+    assert seen["args"][2] == "proposal"
+    assert seen["kwargs"]["human_approved"] is False
+
+
+def test_bridge_module_has_no_execute_entrypoint() -> None:
+    """Phase 1 runs tools through the registry, not raw calls."""
+    import lib.mcp_bridge as bridge
+
+    assert not hasattr(bridge, "execute")
+    assert hasattr(bridge, "tool_run")
 
 
 def test_mcp_wrappers_normalize_dict_and_list_results() -> None:

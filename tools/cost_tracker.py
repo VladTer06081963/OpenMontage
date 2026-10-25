@@ -181,6 +181,17 @@ class CostTracker:
         entry["timestamp"] = self._now()
         self._save()
 
+    def reload(self) -> None:
+        """Re-read the persisted state, discarding in-memory drift.
+
+        Long-lived processes can hold a tracker while another process (the
+        detached job worker) reconciles entries in the same state file.
+        Reloading before a mutation prevents one process from clobbering the
+        other's writes.
+        """
+        if self.cost_log_path and self.cost_log_path.exists():
+            self._load()
+
     # ---- Reference-driven estimation ----
 
     def estimate_from_reference(

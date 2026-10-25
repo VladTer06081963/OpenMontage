@@ -24,5 +24,11 @@ Voicebox, LeronX, Codegraph. В `test.md` §Шаг 7 — рабочий кейс
 Агент генерирует в ComfyUI и не может отдать результат в пайплайн (или наоборот) —
 ассеты остаются вне `projects/<id>/`, доска пуста, гейт `assets` ревьюит нечего.
 
+## Состояние на 2026-10-25 (после T006)
+Hand-off реализован: `om_asset_list`, `om_media_path`, `om_staging_roots`,
+`om_staging_copy` + документ `docs/mcp/studio-integration.md`. Sandbox Resolve
+зафиксирован в контракте. Подробности — в
+[summary/tasks/006](../tasks/006_studio-integration_2026-10-25.md).
+
 ## Связанные задачи
 - [T006 · Paths, staging и порядок вызовов «студия ↔ проект»](../tasks/006_studio-integration_2026-10-25.md)

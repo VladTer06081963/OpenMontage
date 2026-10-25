@@ -419,6 +419,60 @@ def _merge_decision_log(
         json.dump(existing, f, indent=2)
 
 
+def read_decision_log(pipeline_dir: Path, project_id: str) -> dict[str, Any]:
+    """Read the project-level decision log (empty structure when absent)."""
+    path = _decision_log_path(pipeline_dir, project_id)
+    if not path.exists():
+        return {"version": "1.0", "project_id": project_id, "decisions": []}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def append_decision_log(
+    pipeline_dir: Path,
+    project_id: str,
+    decisions: dict[str, Any] | list[dict[str, Any]],
+) -> Path:
+    """Append decisions to the project-level decision log without touching a stage.
+
+    Public counterpart to `_merge_decision_log`. Use it when a choice changes
+    *mid-stage* (provider swap, runtime change, voice) and the stage checkpoint
+    must not be rewritten: `write_checkpoint` would demand the stage's full
+    artifact set and would change the stage status.
+
+    The payload is validated against `schemas/artifacts/decision_log.schema.json`
+    before it is persisted, so a malformed decision can never reach the audit
+    trail. Existing entries are never mutated — a revision is a NEW entry that
+    reuses the same (category, subject) pair, which is how the Backlot board
+    recognises a changed choice.
+
+    Returns the path of the decision log.
+    """
+    if isinstance(decisions, dict):
+        decision_list = [decisions]
+    elif isinstance(decisions, list):
+        decision_list = list(decisions)
+    else:
+        raise CheckpointValidationError(
+            "decisions must be a decision dict or a list of decision dicts"
+        )
+
+    payload = {
+        "version": "1.0",
+        "project_id": project_id,
+        "decisions": decision_list,
+    }
+    try:
+        validate_artifact("decision_log", payload)
+    except Exception as exc:
+        raise CheckpointValidationError(
+            f"decision_log failed schema validation: {exc}"
+        ) from exc
+
+    _merge_decision_log(pipeline_dir, project_id, payload)
+    return _decision_log_path(pipeline_dir, project_id)
+
+
 def write_checkpoint(
     pipeline_dir: Path,
     project_id: str,

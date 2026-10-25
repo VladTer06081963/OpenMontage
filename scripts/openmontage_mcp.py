@@ -39,23 +39,39 @@ except ImportError:  # pragma: no cover - mcp 1.x fallback
 from lib.mcp_bridge import (
     BridgeError,
     artifact_read,
+    artifact_write,
+    asset_list,
     board_state,
+    budget,
     checkpoint_read,
+    checkpoint_write,
     context_pack,
+    decision_append,
+    decision_read,
+    job_list,
+    job_result,
+    job_status,
     list_pipelines,
+    media_path,
     pipeline_manifest,
     preflight,
+    project_init,
     project_state,
     read_skill,
+    staging_copy,
+    staging_roots,
+    tool_approve,
+    tool_estimate,
     tool_info,
     tool_list,
+    tool_run,
 )
 
 INSTRUCTIONS = """\
-OpenMontage is an instruction-driven video production system. This server is
-READ-ONLY (phase 0): it exposes capability discovery, pipeline manifests,
-project state, checkpoints, artifacts, the live Backlot board, and the
-instruction files (skills) that define the quality bar for each stage.
+OpenMontage is an instruction-driven video production system. This server
+exposes capability discovery, pipeline manifests, project state, checkpoints,
+artifacts, the live Backlot board, the instruction files (skills) that define
+the quality bar for each stage, and (phase 1) governed tool execution.
 
 Workflow for an agent:
   1. om_preflight            -> what this machine can do (providers, runtimes)
@@ -64,10 +80,15 @@ Workflow for an agent:
   4. om_context_pack         -> summary of a stage (not the full skill text)
   5. om_read_skill           -> load the director skill when you need it
   6. om_project_state        -> where the project stands, what is next
+  7. om_tool_estimate        -> price of a call, BEFORE running it
+  8. om_tool_run             -> run a tool (budget-checked, workspace-scoped)
+  9. om_checkpoint_write     -> close the stage (gates enforced in the repo)
 
 Gates, budgets and the decision log are enforced inside the repository, not
 here: a checkpoint write for a gated stage without human approval raises a
-GATE VIOLATION, and that behaviour must not be worked around.
+GATE VIOLATION, and that behaviour must not be worked around. A paid tool that
+needs approval returns needs_approval=true — ask a human and call
+om_approve_tool; do not retry blindly.
 """
 
 server = MCPServer(
@@ -202,6 +223,236 @@ def om_read_skill(path: str, section: str | None = None, max_chars: int = 12000)
 def om_context_pack(pipeline: str, stage: str | None = None) -> dict:
     """Stage summary without the wall of text."""
     return _safe(context_pack, pipeline, stage)
+
+
+# ---- Phase 1: governed execution ---------------------------------------
+
+
+@server.tool(
+    name="om_tool_estimate",
+    description="Cost and runtime estimate for a tool call. ALWAYS call before a paid "
+    "run. Returns the estimate, provider, availability and the Layer-3 skills that "
+    "must be read before using the tool.",
+)
+def om_tool_estimate(tool: str, params: dict) -> dict:
+    """What a call would cost and need."""
+    return _safe(tool_estimate, tool, params)
+
+
+@server.tool(
+    name="om_tool_run",
+    description="Execute one registered tool under the project's budget. Output paths "
+    "must live inside projects/<project_id>/. mode='auto' (default) runs a long call as "
+    "a detached background job and returns a job_id; mode='sync' blocks; mode='job' "
+    "always detaches. Returns needs_approval=true when a human must approve the spend, "
+    "or budget_exceeded=true when the cap is hit.",
+)
+def om_tool_run(
+    tool: str,
+    params: dict,
+    project_id: str,
+    dry_run: bool = False,
+    mode: str = "auto",
+) -> dict:
+    """Run a tool, budget-checked."""
+    return _safe(tool_run, tool, params, project_id, dry_run, mode)
+
+
+@server.tool(
+    name="om_job_status",
+    description="State of a background job: running | completed | failed. Poll instead "
+    "of resubmitting — a running job is already paid for.",
+)
+def om_job_status(project_id: str, job_id: str) -> dict:
+    """Poll a background job."""
+    return _safe(job_status, project_id, job_id)
+
+
+@server.tool(
+    name="om_job_result",
+    description="Result of a finished background job: data, artifacts, cost, model, seed.",
+)
+def om_job_result(project_id: str, job_id: str) -> dict:
+    """Collect a finished job's result."""
+    return _safe(job_result, project_id, job_id)
+
+
+@server.tool(
+    name="om_job_list",
+    description="All background jobs of a project, newest first.",
+)
+def om_job_list(project_id: str) -> dict:
+    """Discover jobs (useful after a reconnect)."""
+    return _safe(job_list, project_id)
+
+
+@server.tool(
+    name="om_approve_tool",
+    description="Approve a tool for paid operations after a human approved the spend. "
+    "Clears the needs_approval flag raised by om_tool_run. Approval persists per project.",
+)
+def om_approve_tool(tool: str, project_id: str) -> dict:
+    """Approve a paid tool for this project."""
+    return _safe(tool_approve, tool, project_id)
+
+
+@server.tool(
+    name="om_budget",
+    description="Spend, reservations and remaining budget for a project, plus pending "
+    "cost entries awaiting approval.",
+)
+def om_budget(project_id: str) -> dict:
+    """Budget state for a project."""
+    return _safe(budget, project_id)
+
+
+@server.tool(
+    name="om_decision_append",
+    description="Append a decision to the project decision log WITHOUT touching the "
+    "stage checkpoint. To revise a choice, reuse the same (category, subject). "
+    "The log is append-only.",
+)
+def om_decision_append(
+    project_id: str,
+    stage: str,
+    category: str,
+    subject: str,
+    options_considered: list[dict],
+    selected: str,
+    reason: str,
+    user_approved: bool = False,
+    decision_id: str | None = None,
+    confidence: float | None = None,
+) -> dict:
+    """Record a decision mid-stage."""
+    return _safe(
+        decision_append,
+        project_id,
+        stage,
+        category,
+        subject,
+        options_considered,
+        selected,
+        reason,
+        user_approved,
+        decision_id,
+        confidence,
+    )
+
+
+@server.tool(
+    name="om_decision_read",
+    description="Read the full decision log of a project.",
+)
+def om_decision_read(project_id: str) -> dict:
+    """The project audit trail."""
+    return _safe(decision_read, project_id)
+
+
+@server.tool(
+    name="om_checkpoint_write",
+    description="Write a stage checkpoint. GATE ENFORCEMENT IS IN THE REPOSITORY: a "
+    "gated stage cannot be written as completed without human_approved=true — doing "
+    "so raises a GATE VIOLATION and must not be worked around.",
+)
+def om_checkpoint_write(
+    project_id: str,
+    stage: str,
+    status: str,
+    artifacts: dict,
+    human_approved: bool = False,
+    pipeline_type: str | None = None,
+    review: dict | None = None,
+    metadata: dict | None = None,
+) -> dict:
+    """Close a stage — with the gate intact."""
+    return _safe(
+        checkpoint_write,
+        project_id,
+        stage,
+        status,
+        artifacts,
+        human_approved,
+        pipeline_type,
+        review,
+        None,
+        metadata,
+    )
+
+
+@server.tool(
+    name="om_artifact_write",
+    description="Write a canonical artifact (research_brief, script, scene_plan, ...) "
+    "into projects/<project_id>/artifacts/, validated against its schema.",
+)
+def om_artifact_write(project_id: str, artifact: str, payload: dict) -> dict:
+    """Persist a canonical artifact."""
+    return _safe(artifact_write, project_id, artifact, payload)
+
+
+@server.tool(
+    name="om_project_init",
+    description="Create the project workspace: artifacts/, assets/, renders/ and "
+    "project.json — the marker the Backlot board reads.",
+)
+def om_project_init(
+    project_id: str,
+    title: str,
+    pipeline_type: str,
+    style_playbook: str | None = None,
+) -> dict:
+    """Create a project workspace."""
+    return _safe(project_init, project_id, title, pipeline_type, style_playbook)
+
+
+# ---- Phase 1: bridge to the studio (ComfyUI / Resolve / CapCut) ----------
+
+
+@server.tool(
+    name="om_asset_list",
+    description="List every file in the project workspace grouped by asset kind "
+    "(images/video/audio/music) with sizes.",
+)
+def om_asset_list(project_id: str, kind: str | None = None) -> dict:
+    """What the project has produced so far."""
+    return _safe(asset_list, project_id, kind)
+
+
+@server.tool(
+    name="om_media_path",
+    description="Absolute path of a project file, to hand to another MCP server "
+    "(comfy_upload_image, Resolve media_pool import). Refuses paths outside the project.",
+)
+def om_media_path(project_id: str, rel_path: str) -> dict:
+    """Project-relative path -> absolute path for an external studio."""
+    return _safe(media_path, project_id, rel_path)
+
+
+@server.tool(
+    name="om_staging_roots",
+    description="Candidate staging roots with existence and writability. DaVinci Resolve "
+    "on macOS only imports from volumes the user granted — stage the file there first.",
+)
+def om_staging_roots() -> dict:
+    """Where files can be staged for Resolve."""
+    return _safe(staging_roots)
+
+
+@server.tool(
+    name="om_staging_copy",
+    description="Copy a project file into a staging root another app can read "
+    "(layout: <target_root>/<project_name>/<relative path>). Needed because Resolve "
+    "refuses to import from arbitrary folders.",
+)
+def om_staging_copy(
+    project_id: str,
+    rel_path: str,
+    target_root: str | None = None,
+    project_name: str | None = None,
+    overwrite: bool = False,
+) -> dict:
+    """Stage a project file for an external NLE."""
+    return _safe(staging_copy, project_id, rel_path, target_root, project_name, overwrite)
 
 
 def main(argv: list[str] | None = None) -> int:

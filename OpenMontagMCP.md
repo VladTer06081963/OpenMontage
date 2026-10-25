@@ -261,32 +261,49 @@ Decision log: категории зафиксированы схемой — `pi
 | Обходить пайплайн (Rule Zero) | `om_tool_run` не заменяет стадии; агент обязан идти по стадиям манифеста |
 | Трогать артефакты в обход схем | `om_artifact_write` валидирует по `schemas/artifacts/` |
 
-### 3.5. Долгие генерации: режим `job`
+### 3.5. Долгие генерации: режим `job` — ✅ реализовано 2026-10-25
 
 Тяжёлые тулы (видео-генерация `kie/minimax/kling/atlas_3d`, рендер Remotion/HyperFrames, 3D-рендер Blender) работают 30 с — 10 мин. Клиенты MCP имеют собственные таймауты (обычно 60–120 с), поэтому синхронный `om_tool_run` отвалится на стороне клиента, **хотя генерация на бэкенде продолжится** — и платный вызов придётся повторять.
 
-Решение — два режима у одного тула:
+Реализация: два режима у одного тула + **отсоединённый воркер**.
 
 | Режим | Поведение | Когда |
 |---|---|---|
-| `mode="sync"` | блокирующий вызов, полный `ToolResult` | быстрые тулы (анализ, ffmpeg-пост, рендер одной сцены) |
-| `mode="job"` | мгновенно возвращает `job_id`; работа идёт в фоне | всё, что дольше ~60 с, и любой платный API |
+| `mode="auto"` (по умолчанию) | сам выбирает: `estimate_runtime() >= 60 с` или capability из `LONG_CAPABILITIES` → job, иначе sync | обычный вызов |
+| `mode="sync"` | блокирующий вызов, полный `ToolResult` | короткие тулы |
+| `mode="job"` | мгновенно возвращает `job_id`; работа идёт в отдельном процессе | тяжёлые тулы |
 
 Жизненный цикл задачи:
 
 ```
-om_tool_run(mode="job")  -> { job_id, status: "running", estimated_cost_usd }
-om_job_status(job_id)    -> { status: "running|completed|failed", progress? }
+om_tool_run(mode="job")  -> { job_id, status: "running", estimated_cost_usd, estimated_seconds }
+om_job_status(job_id)    -> { status: running|completed|failed, cost_usd, error }
 om_job_result(job_id)    -> { data, artifacts, cost_usd, model, seed }
+om_job_list(project_id)  -> все задачи проекта (после переподключения клиента)
 ```
 
-Требования к реализации:
+Ключевые решения:
 
-- **Никогда не переотправлять платный запрос.** Если клиент отвалился по таймауту, задача продолжается — повторный вызов создаёт вторую оплаченную генерацию. Мост обязан возвращать `job_id` и быть идемпотентным по `params` (ключ `BaseTool.idempotency_key(params)` / `cache_key(params)`).
-- Переиспользовать штатные примитивы `tools/provider_jobs.py`: `save_job(path, data)` — атомарная запись (`.part` → `replace`), `poll(fetch, timeout=600, interval=2)` — опрос с понятным `TimeoutError("Job is still pending; resume with the returned job metadata, do not resubmit")`.
-- Метаданные задачи — в `projects/<id>/artifacts/jobs/<job_id>.json`, результат — рядом; оба видны доске.
-- `CostTracker`: `reserve()` **до** запуска фоновой задачи, `reconcile()` — по её завершении. Иначе потраченное не попадёт в `cost_snapshot`.
-- Прогресс через `ctx.report_progress()` (FastMCP) — только если клиент прислал progress-token; в stdio это обычно не работает, поэтому источник истины — `om_job_status`.
+- **Воркер — отдельный процесс** (`scripts/mcp_job_worker.py`, `start_new_session=True`):
+  переживает таймаут клиента **и** падение MCP-сервера. Он читает job-запись, выполняет тул
+  **ровно один раз**, сверяет бюджет и пишет результат обратно.
+- **Job-запись — источник истины**: `projects/<id>/artifacts/jobs/<job_id>.json`,
+  атомарная запись через `tools/provider_jobs.save_job`. Никаких «повторных отправок»:
+  запись переживает перезапуск, а статус читается с диска.
+- **Идемпотентность**: ключ `tool:idempotency_key(params)`; повторный вызов с теми же
+  параметрами возвращает **тот же** `job_id` с `idempotent_replay: true`, а не создаёт
+  вторую оплату.
+- **Бюджет**: `reserve()` **до** старта воркера, `reconcile()` — по его завершении
+  (в воркере). `CostTracker.reload()` добавлен upstream, чтобы длинный процесс (мост)
+  и воркер не затирали состояния друг друга.
+- **Признак долгого вызова**: `estimate_runtime()` есть не у всех тулов, поэтому
+  fallback — capability (`video_generation`, `avatar`, `3d_*`, `music_generation`,
+  `character_animation`) → 120 с.
+- **Порог**: `OPENMONTAGE_MCP_JOB_THRESHOLD_SECONDS` (по умолчанию 60).
+
+> Тул, зарегистрированный только в памяти процесса моста, воркер не увидит — это
+> относится к тестовым заглушкам; все реальные тулы лежат в пакете `tools/` и
+> находятся через `registry.discover()`.
 
 ### 3.6. Бюджет контекста: `om_context_pack` отдаёт выжимку, а не простыни
 
@@ -314,37 +331,64 @@ om_job_result(job_id)    -> { data, artifacts, cost_usd, model, seed }
 
 ### 3.7. Статус реализации (на 2026-10-25)
 
-Фаза 0 (read-only) **реализована и проверена**.
+**Фазы 0 и 1 (read-only + управляемое исполнение с фоновыми задачами) — реализованы.**
 
 | Файл | Роль |
 |---|---|
-| `lib/mcp_bridge.py` | 11 чистых функций без MCP-зависимостей — вся логика здесь, тестируется обычными юнит-тестами |
+| `lib/mcp_bridge.py` | вся логика: чистые функции без MCP-зависимостей, тестируются обычными юнит-тестами |
 | `scripts/openmontage_mcp.py` | stdio-сервер на `MCPServer` (mcp **2.x**; в 2.x `FastMCP` переименован в `MCPServer`, в скрипте есть fallback на 1.x) — только маппинг в MCP-тулы |
 | `scripts/mcp_smoke.py` | смоук через настоящий MCP-клиент: `make mcp-smoke` |
-| `tests/lib/test_mcp_bridge.py` | 27 тестов контракта |
+| `scripts/mcp_job_worker.py` | отсоединённый воркер фоновой задачи (переживает таймаут клиента) |
+| `tests/lib/test_mcp_bridge.py`, `tests/lib/test_mcp_bridge_phase1.py`, `tests/lib/test_mcp_bridge_jobs.py`, `tests/lib/test_mcp_bridge_studio.py` | 64 теста контракта |
 
-Реализованная поверхность (все тулы read-only, write/execute отсутствуют):
+Реализованная поверхность (27 тулов):
 
 ```
-om_preflight           om_pipelines        om_pipeline_manifest
-om_project_state       om_checkpoint_read  om_artifact_read
-om_board_state         om_tool_list        om_tool_info
-om_read_skill          om_context_pack
+Фаза 0 (read-only)                      Фаза 1 (управляемое исполнение)
+om_preflight         om_pipelines         om_tool_estimate    om_tool_run
+om_pipeline_manifest om_project_state     om_approve_tool     om_budget
+om_checkpoint_read   om_artifact_read     om_decision_append  om_decision_read
+om_board_state       om_tool_list         om_checkpoint_write om_artifact_write
+om_tool_info         om_read_skill        om_project_init
+om_context_pack
+
+Фоновые задачи: om_job_status · om_job_result · om_job_list
+Связка со студией: om_asset_list · om_media_path · om_staging_roots · om_staging_copy
 ```
 
 Формат ответа: `{"ok": true, ...}` для dict-результатов, `{"ok": true, "items": [...]}`
 для списков, `{"ok": false, "error": ..., "error_type": ...}` для ошибок.
 
+Ключевые контракты Фазы 1:
+
+- **Порядок вызова тула**: доступность → проверка `output_path` внутри `projects/<id>/` →
+  `dry_run()` (цена) → `reserve()` (бюджет) → `execute()` → `reconcile()`.
+- **`refund()` не вызывается** при отказе `reserve()` — деньги не зарезервированы, запись
+  остаётся `estimated`, сервер не падает.
+- **Трекер — один на проект**, state-файл `projects/<id>/.cost_tracker_state.json`;
+  одобрения и траты переживают перезапуск сервера.
+- **Решения** — `lib/checkpoint.py::append_decision_log()`: append-only, валидация по схеме,
+  ревизия = новая запись с тем же `(category, subject)`, статус стадии не трогается.
+- **Гейт** — `write_checkpoint` в репозитории: гейтовая стадия без `human_approved=True`
+  бросает GATE VIOLATION, и мост это не перехватывает.
+
 Регистрация (сделано): `.pi/mcp.json` (pi), `.mcp.json` (Claude Code / Cursor),
 `.agents/mcp_config.json` + `~/.gemini/config/mcp_config.json` (Gemini CLI),
 `opencode.jsonc` (OpenCode).
 
-Проверено: `27 passed` (pytest) · `9/9 PASS` (смоук) · `pi mcp list` →
-`openmontage: connected, 11 tools (codemode, project)`.
+Проверено: `64 passed` (pytest) · `21/21 PASS` (смоук, включая реальный воркер) ·
+`pi mcp list` → `openmontage: connected, 27 tools (codemode, project)`.
 
-**Ограничения фазы 0:** нет записи в проект, нет запуска тулов, нет бюджета —
-это Фазы 1–2 (раздел 4). Фазы 0 достаточно, чтобы внешний агент **ориентировался** в
-проекте и читал инструкции; управлять продакшном он пока не может.
+**Закрыто:** T002 (решения), T003 (бюджет), T004 (фоновые задачи), T005 (контекст),
+T006 (связка со студией).
+
+**Ограничения текущей фазы:**
+- файловая блокировка state-файла трекера не защищена от гонки двух процессов
+  (окно узкое: reserve до старта, reconcile после);
+- `om_layer3_skills` свёрнут в `om_tool_info`/`om_tool_estimate` (они возвращают
+  `agent_skills` — пути Layer-3, которые читаются через `om_read_skill`);
+- воркер не увидит тул, зарегистрированный только в памяти процесса моста
+  (реальные тулы лежат в пакете `tools/`).
 
 ---
 
@@ -358,15 +402,14 @@ om_read_skill          om_context_pack
 - Инструменты: `om_preflight`, `om_pipelines`, `om_pipeline_manifest`, `om_project_state`, `om_checkpoint_read`, `om_artifact_read`, `om_read_skill`, `om_context_pack`, `om_tool_list`, `om_tool_info`, `om_board_state`.
 - Ничего не исполняет и не пишет. Реализация и проверка — §3.7.
 
-### Фаза 1 — управляемое исполнение (~2–3 дня)
+### Фаза 1 — управляемое исполнение (~2–3 дня) — ✅ сделано 2026-10-25
 
 - `om_tool_estimate` + `om_tool_run` с обязательным `project_id` и проверкой `output_path` внутри workspace.
-- **`mode="job"`** для тяжёлых тулов (§3.5) — иначе платные генерации будут отваливаться по клиентскому таймауту и дублироваться.
-- `om_project_init`, `om_checkpoint_write`, `om_decision_append`, `om_artifact_write` (с валидацией схемой).
-- **Доработка upstream**: публичная `append_decision_log()` в `lib/checkpoint.py` (без неё мост лажет на приватный `_merge_decision_log`).
-- **Бюджетный предохранитель**: переиспользовать `CostTracker` в режиме `CAP` — отказ при превышении происходит до вызова; `om_tool_estimate` (штатный `BaseTool.dry_run`) обязателен перед платным вызовом.
-- **Один трекер на проект** + персистентный state-файл, иначе одобрения теряются между вызовами (§4, «Доработка upstream»).
-- **Анонс провайдера**: ответ `om_tool_run` содержит `provider`, `model`, `cost_usd`, `seed` — Decision Communication Contract остаётся исполнимым.
+- `om_project_init`, `om_checkpoint_write`, `om_decision_append`, `om_artifact_write`, `om_budget`, `om_approve_tool`.
+- **Доработка upstream**: публичная `append_decision_log()` в `lib/checkpoint.py` (сделано).
+- **Бюджетный предохранитель**: `CostTracker` в режиме `CAP`, трекер один на проект + state-файл.
+- **Анонс провайдера**: ответ `om_tool_run` содержит `provider`, `model`, `cost_usd`, `seed`.
+- **Не сделано (T004):** режим `mode="job"` для долгих генераций.
 
 ### Фаза 2 — полный контур
 
