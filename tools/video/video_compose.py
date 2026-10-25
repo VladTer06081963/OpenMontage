@@ -763,6 +763,34 @@ class VideoCompose(BaseTool):
         return comp
 
     @staticmethod
+    def _resolve_browser_executable(inputs: dict[str, Any]) -> Optional[str]:
+        """Detect or resolve local browser executable for Remotion rendering.
+
+        Avoids Remotion trying to download chrome-headless-shell on machines with
+        restricted network access or where local Chrome is already present.
+        """
+        import os
+        custom = inputs.get("browser_executable")
+        if custom and Path(custom).exists():
+            return str(custom)
+        env_path = os.environ.get("PUPPETEER_EXECUTABLE_PATH") or os.environ.get("CHROME_PATH")
+        if env_path and Path(env_path).exists():
+            return str(env_path)
+        candidates = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ]
+        for c in candidates:
+            if Path(c).exists():
+                return str(c)
+        return None
+
+    @staticmethod
     def _cuts_to_cinematic_scenes(cuts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Adapt canonical sequential cuts to CinematicRenderer's scene contract."""
 
@@ -1042,6 +1070,10 @@ class VideoCompose(BaseTool):
             cmd.append(f"--crf={bespoke['crf']}")
         if bespoke.get("concurrency"):
             cmd.append(f"--concurrency={bespoke['concurrency']}")
+
+        browser_exec = self._resolve_browser_executable(inputs)
+        if browser_exec:
+            cmd.append(f"--browser-executable={browser_exec}")
 
         try:
             # Run from inside the composer dir so npx resolves the local
@@ -2086,6 +2118,10 @@ class VideoCompose(BaseTool):
                     subprocess_timeout = max(subprocess_timeout, ms // 1000 + 60)
                 except (TypeError, ValueError):
                     pass
+
+            browser_exec = self._resolve_browser_executable(inputs)
+            if browser_exec:
+                cmd.append(f"--browser-executable={browser_exec}")
 
             # Invoke from inside the composer dir so npx can resolve the
             # local remotion binary via node_modules/.bin. Without this,

@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "comfyui": {
+      "command": "/usr/bin/python3",
+      "args": ["/Users/mac/comfy-mcp/comfy_mcp.py"],
+      "env": {
+        "COMFY_URL": "http://192.168.50.97:8188",
+        "COMFY_TEMPLATES": "/Users/mac/comfy-mcp/templates",
+        "COMFY_OUT_DIR": "/Users/mac/comfy-out"
+      }
+    },
+    "davinci-resolve": {
+      "command": "/Users/mac/Library/Application Support/davinci-resolve-mcp/venv/bin/python",
+      "args": [
+        "/Users/mac/Library/Application Support/davinci-resolve-mcp/src/server.py"
+      ],
+      "env": {
+        "RESOLVE_SCRIPT_API": "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting",
+        "RESOLVE_SCRIPT_LIB": "/Applications/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so",
+        "PYTHONPATH": "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules"
+      }
+    },
+    "openmontage": {
+      "command": "/Users/mac/openMontag/.venv/bin/python",
+      "args": ["/Users/mac/openMontag/scripts/openmontage_mcp.py"],
+      "cwd": "/Users/mac/openMontag",
+      "env": {
+        "PYTHONPATH": "/Users/mac/openMontag"
+      }
+    }
+  }
+}

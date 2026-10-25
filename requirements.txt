@@ -16,3 +16,8 @@ uvicorn>=0.29
 watchfiles>=0.21
 
 websockets>=14.0       # Eleven v4 Turbo and realtime audio transports
+websocket-client>=1.8.0 # ComfyUI client websocket progress tracking
+
+# MCP server - external agent control (read-only phase 0).
+# mcp>=2 renamed FastMCP to MCPServer; scripts/openmontage_mcp.py handles both.
+mcp>=2.0

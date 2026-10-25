@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "codegraph": {
+      "type": "stdio",
+      "command": "codegraph",
+      "args": [
+        "serve",
+        "--mcp"
+      ],
+      "alwaysLoad": true
+    },
+    "openmontage": {
+      "type": "stdio",
+      "command": "/Users/mac/openMontag/.venv/bin/python",
+      "args": [
+        "/Users/mac/openMontag/scripts/openmontage_mcp.py"
+      ],
+      "cwd": "/Users/mac/openMontag",
+      "env": {
+        "PYTHONPATH": "/Users/mac/openMontag"
+      },
+      "description": "OpenMontage project control (read-only phase 0): capability discovery, pipeline manifests, project state, checkpoints, artifacts, live board, and the instruction skills that define each stage's quality bar."
+    }
+  }
+}

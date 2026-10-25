@@ -104,3 +104,10 @@ venv/
 
 # Local Wan / diffusers GPU environment
 .venv-wan/
+
+# Local ComfyUI workflows, outputs, and cache
+ComfyUI/
+
+# Local CodeGraph index (SQLite DB)
+.codegraph/
+

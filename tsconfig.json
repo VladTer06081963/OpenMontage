@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": "./remotion-composer",
+    "paths": {
+      "react": ["node_modules/@types/react"],
+      "react/jsx-runtime": ["node_modules/@types/react/jsx-runtime"],
+      "*": ["node_modules/*", "node_modules/@types/*"]
+    }
+  },
+  "include": [
+    "remotion-composer/src/**/*",
+    "remotion-composer/projects/**/*",
+    "projects/**/*"
+  ]
+}

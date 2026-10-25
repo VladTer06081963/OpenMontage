@@ -57,7 +57,10 @@ class ComfyUIClient:
             f"COMFYUI_{capability.upper()}_SERVER_URL" if capability else None
         )
         resolved = (
-            server_url or self._capability_url() or os.environ.get("COMFYUI_SERVER_URL")
+            server_url
+            or self._capability_url()
+            or os.environ.get("COMFYUI_SERVER_URL")
+            or os.environ.get("COMFY_URL")
         )
         self.server_url = (resolved or "http://localhost:8188").rstrip("/")
         # Scopes websocket execution events to this client (see wait_ws) and
@@ -75,8 +78,11 @@ class ComfyUIClient:
 
     @property
     def is_default_url(self) -> bool:
-        """True if neither the capability-specific nor shared env var is set."""
-        return not (self._capability_url() or os.environ.get("COMFYUI_SERVER_URL"))
+        return not (
+            self._capability_url()
+            or os.environ.get("COMFYUI_SERVER_URL")
+            or os.environ.get("COMFY_URL")
+        )
 
     def unavailable_reason(self) -> str:
         """Human-readable explanation of why the server can't be reached."""
@@ -268,6 +274,7 @@ class ComfyUIClient:
         :meth:`poll`, so ``resume_prompt_id`` recovery works the same way
         regardless of which wait strategy was used.
         """
+        # pyrefly: ignore[missing-import]
         import websocket  # websocket-client; optional, see docstring
 
         # History is authoritative and websocket events are not replayed. The
