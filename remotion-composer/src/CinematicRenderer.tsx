@@ -73,21 +73,40 @@ const SceneVideo: React.FC<{ scene: CinematicVideoScene }> = ({ scene }) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#020407", opacity }}>
-      <OffthreadVideo
-        muted
-        src={resolveAsset(scene.src)}
-        trimBefore={trimBefore}
-        trimAfter={trimAfter}
-        playbackRate={scene.playbackRate}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          transform: `scale(${scale})`,
-          filter:
-            scene.filter ?? "contrast(1.06) saturate(0.88) brightness(0.92)",
-        }}
-      />
+      {scene.src ? (
+        <OffthreadVideo
+          muted
+          src={resolveAsset(scene.src)}
+          trimBefore={trimBefore}
+          trimAfter={trimAfter}
+          playbackRate={scene.playbackRate}
+          onError={(err) => {
+            console.warn(`[CinematicRenderer] Failed to play video scene ${scene.id}:`, err);
+          }}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            transform: `scale(${scale})`,
+            filter:
+              scene.filter ?? "contrast(1.06) saturate(0.88) brightness(0.92)",
+          }}
+        />
+      ) : (
+        <AbsoluteFill
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#020407",
+            color: "#4B5563",
+            fontFamily: "system-ui, sans-serif",
+            fontSize: 28,
+          }}
+        >
+          [Scene {scene.id}: No video source]
+        </AbsoluteFill>
+      )}
       <AbsoluteFill
         style={{
           background: toneGradient(scene.tone ?? "cold"),
@@ -248,6 +267,9 @@ const TitleCard: React.FC<{
               src={resolveAsset(backgroundSrc)}
               trimBefore={bgTrimBefore}
               trimAfter={bgTrimAfter}
+              onError={(err) => {
+                console.warn("[CinematicRenderer] Background video playback error:", err);
+              }}
               style={{
                 width: "100%",
                 height: "100%",
@@ -427,12 +449,19 @@ const Soundtrack: React.FC<{
     },
   );
 
+  if (!src) {
+    return null;
+  }
+
   return (
     <Audio
       src={resolveAsset(src)}
       trimBefore={trimBefore}
       trimAfter={trimAfter}
       volume={() => Math.min(fadeIn, fadeOut)}
+      onError={(err) => {
+        console.warn("[CinematicRenderer] Audio soundtrack playback error:", err);
+      }}
     />
   );
 };

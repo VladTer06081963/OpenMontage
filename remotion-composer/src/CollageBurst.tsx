@@ -346,18 +346,23 @@ const CollageCard: React.FC<{ clip: CollageClip; frameW: number; frameH: number 
       />
     ) : (
       <Sequence from={inFrame} layout="none">
-        <OffthreadVideo
-          src={resolveAsset(clip.src)}
-          startFrom={startFromFrames}
-          muted
-          playbackRate={1}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-        />
+        {clip.src ? (
+          <OffthreadVideo
+            src={resolveAsset(clip.src)}
+            startFrom={startFromFrames}
+            muted
+            playbackRate={1}
+            onError={(err) => {
+              console.warn("[CollageBurst] Clip video playback error:", err);
+            }}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : null}
       </Sequence>
     );
 
@@ -476,6 +481,9 @@ export const CollageBurst: React.FC<CollageBurstProps> = ({
             src={resolveAsset(backgroundSrc)}
             startFrom={Math.round(backgroundInSeconds * fps)}
             muted
+            onError={(err) => {
+              console.warn("[CollageBurst] Background video playback error:", err);
+            }}
             style={{
               width: "100%",
               height: "100%",

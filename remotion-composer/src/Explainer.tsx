@@ -457,17 +457,22 @@ const VideoScene: React.FC<{
 
   return (
     <AbsoluteFill style={{ background: backgroundColor }}>
-      <OffthreadVideo
-        src={resolveAsset(src)}
-        startFrom={Math.round(startFrom * fps)}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          opacity: fadeIn * fadeOut,
-        }}
-        muted
-      />
+      {src ? (
+        <OffthreadVideo
+          src={resolveAsset(src)}
+          startFrom={Math.round(startFrom * fps)}
+          onError={(err) => {
+            console.warn("[Explainer] VideoScene playback error:", err);
+          }}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: fadeIn * fadeOut,
+          }}
+          muted
+        />
+      ) : null}
       <Vignette />
     </AbsoluteFill>
   );
@@ -530,16 +535,21 @@ const BackgroundVideoLayer: React.FC<{
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       {/* Background video */}
-      <OffthreadVideo
-        src={resolveAsset(src)}
-        startFrom={Math.round(startFrom * fps)}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-        }}
-        muted
-      />
+      {src ? (
+        <OffthreadVideo
+          src={resolveAsset(src)}
+          startFrom={Math.round(startFrom * fps)}
+          onError={(err) => {
+            console.warn("[Explainer] VideoCard background playback error:", err);
+          }}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+          muted
+        />
+      ) : null}
       {/* Dark overlay for readability */}
       <AbsoluteFill
         style={{
@@ -883,7 +893,13 @@ export const Explainer: React.FC<ExplainerProps> = (props) => {
 
       {/* Layer 4: Audio — narration */}
       {audio?.narration?.src && (
-        <Audio src={resolveAsset(audio.narration.src)} volume={audio.narration.volume ?? 1} />
+        <Audio
+          src={resolveAsset(audio.narration.src)}
+          volume={audio.narration.volume ?? 1}
+          onError={(err) => {
+            console.warn("[Explainer] Narration audio playback error:", err);
+          }}
+        />
       )}
 
       {/* Layer 4: Audio — music with offset, fade in/out, and optional loop */}
@@ -893,6 +909,9 @@ export const Explainer: React.FC<ExplainerProps> = (props) => {
           startFrom={Math.round((audio.music.offsetSeconds ?? 0) * fps)}
           loop={audio.music.loop ?? false}
           loopVolumeCurveBehavior="repeat"
+          onError={(err) => {
+            console.warn("[Explainer] Music audio playback error:", err);
+          }}
           volume={(f) => {
             const baseVol = audio.music!.volume ?? 0.1;
             const fadeInDur = (audio.music!.fadeInSeconds ?? 2) * fps;

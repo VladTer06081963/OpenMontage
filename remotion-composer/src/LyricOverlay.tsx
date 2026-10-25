@@ -152,7 +152,28 @@ export const LyricOverlay: React.FC<LyricOverlayProps> = ({
   const { durationInFrames } = useVideoConfig();
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      <OffthreadVideo src={resolveAsset(videoSrc)} />
+      {videoSrc ? (
+        <OffthreadVideo
+          src={resolveAsset(videoSrc)}
+          onError={(err) => {
+            console.warn("[LyricOverlay] Video playback error:", err);
+          }}
+        />
+      ) : (
+        <AbsoluteFill
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#000",
+            color: "#6B7280",
+            fontSize: 24,
+            fontFamily: "system-ui, sans-serif",
+          }}
+        >
+          No videoSrc provided
+        </AbsoluteFill>
+      )}
       {lyrics.map((l, i) => (
         <LyricLine key={i} lyric={l} bottomY={bottomY} />
       ))}

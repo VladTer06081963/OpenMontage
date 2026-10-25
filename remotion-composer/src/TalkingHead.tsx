@@ -327,10 +327,29 @@ export const TalkingHead: React.FC<TalkingHeadProps> = ({
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
       {/* Layer 1: Video background */}
-      <OffthreadVideo
-        src={resolveAsset(videoSrc)}
-        style={{ width: "100%", height: "100%", objectFit: "cover" }}
-      />
+      {videoSrc ? (
+        <OffthreadVideo
+          src={resolveAsset(videoSrc)}
+          onError={(err) => {
+            console.warn("[TalkingHead] Video playback error:", err);
+          }}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        <AbsoluteFill
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "#111827",
+            color: "#9CA3AF",
+            fontSize: 28,
+            fontFamily: "system-ui, sans-serif",
+          }}
+        >
+          No videoSrc provided
+        </AbsoluteFill>
+      )}
 
       {/* Layer 2: Overlays (charts, stats, callouts, etc.) */}
       {overlays?.map((overlay, i) => {
