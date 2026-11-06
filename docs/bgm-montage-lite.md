@@ -24,7 +24,28 @@ $env:BGM_MONTAGE_LITE_ROOT = (Get-Location).Path
 $env:BGM_MONTAGE_LITE_PYTHON = (Resolve-Path .\.venv-openmontage\Scripts\python.exe).Path
 ```
 
-Install FFmpeg (including `ffprobe`) on `PATH`. On macOS/Linux, create the virtual environment with `python3.11 -m venv .venv-openmontage`, install the same requirements file, and export the two variables to the checkout and environment interpreter paths.
+Install FFmpeg (including `ffprobe`) on `PATH`.
+
+### macOS and Linux
+
+The same environment, with POSIX paths:
+
+```bash
+git clone https://github.com/sharbvane/BMTS-Lite.git
+cd BMTS-Lite
+python3.11 -m venv .venv-openmontage
+./.venv-openmontage/bin/python -m pip install -r /path/to/OpenMontage/requirements-bmts-lite-macos-intel.txt
+export BGM_MONTAGE_LITE_ROOT="$PWD"
+export BGM_MONTAGE_LITE_PYTHON="$PWD/.venv-openmontage/bin/python"
+```
+
+`requirements-bmts-lite-macos-intel.txt` mirrors upstream's `requirements-runtime.txt` with one deliberate difference: upstream pins `numpy==2.4.6`, whose resolution needs `numba>=0.64` and `llvmlite>=0.46`, and llvmlite publishes no macOS x86_64 wheels after 0.45.1. On an Intel Mac pip then tries to build llvmlite from source and the install fails. The ceiling is llvmlite 0.45.1 -> numba 0.62.x -> `numpy<2.4`, so numpy is pinned one minor version lower and numba is pinned explicitly. On arm64 or Linux the upstream file installs as written.
+
+The environment lives inside the checkout and is ignored by its `.gitignore` (`.venv*/`): recreate it from the pins instead of moving it between machines.
+
+### FFmpeg on a non-interactive `PATH`
+
+Homebrew installs `ffmpeg` and `ffprobe` into `/opt/homebrew/bin` or `/usr/local/bin`. A non-interactive shell - ssh, launchd, an MCP call - has a minimal `PATH` and does not see them even though they are installed, and the preflight then reports them as missing. The adapter resolves both tools from those locations and extends `PATH` for the worker process, so the tool behaves the same from a terminal and from a service.
 
 No network access or API credentials are used during a montage run. The tool reports as unavailable until the source checkout, runtime packages, FFmpeg, and ffprobe are present.
 

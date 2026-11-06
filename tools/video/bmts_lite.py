@@ -40,6 +40,41 @@ _RATIOS = {
 }
 _RUNNER = Path(__file__).with_name("bmts_lite_runner.py")
 
+_MEDIA_TOOL_CANDIDATE_DIRS = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/opt/local/bin",
+    "/usr/bin",
+    "/bin",
+)
+
+
+def _ensure_media_tools_on_path() -> list[str]:
+    """Make ffmpeg and ffprobe reachable even without a login shell.
+
+    Homebrew installs into /opt/homebrew/bin or /usr/local/bin. A non-interactive
+    shell - ssh, launchd, an MCP call - has a minimal PATH, so the tools that are
+    in fact installed are invisible to shutil.which, and the worker, a child
+    process that inherits this environment, would fail the same way. Extend PATH
+    once, here, and return the tools that are still missing.
+    """
+    missing: list[str] = []
+    for name in ("ffmpeg", "ffprobe"):
+        if shutil.which(name):
+            continue
+        for directory in _MEDIA_TOOL_CANDIDATE_DIRS:
+            candidate = Path(directory) / name
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                current = os.environ.get("PATH", "")
+                parts = current.split(os.pathsep) if current else []
+                if directory not in parts:
+                    os.environ["PATH"] = os.pathsep.join([directory, *parts])
+                break
+        else:
+            missing.append(name)
+    return missing
+
+
 
 def _fraction(value: Any) -> float | None:
     try:
@@ -162,10 +197,14 @@ class BgmMontageLite(BaseTool):
         requested = os.environ.get(_PYTHON_ENV, "").strip() or sys.executable
         path = Path(requested).expanduser()
         if path.is_file():
-            return str(path.resolve())
+            return str(path.absolute())
         found = shutil.which(requested)
         if found:
             return found
+        if requested == "python":
+            found_py3 = shutil.which("python3")
+            if found_py3:
+                return found_py3
         raise DependencyError(f"Python interpreter not found: {requested}")
 
     def _engine_root(self) -> Path:
@@ -188,6 +227,7 @@ class BgmMontageLite(BaseTool):
         return root
 
     def check_dependencies(self) -> None:
+        _ensure_media_tools_on_path()
         super().check_dependencies()
         root = self._engine_root()
         python = self._python_executable()

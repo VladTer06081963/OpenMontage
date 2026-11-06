@@ -1,0 +1,18 @@
+# BMTS-Lite runtime pins that are actually satisfiable on macOS on Intel.
+#
+# Upstream's requirements-runtime.txt pins numpy==2.4.6. That resolution needs
+# numba>=0.64 and llvmlite>=0.46, and llvmlite publishes no macOS x86_64 wheels
+# after 0.45.1 - so pip falls back to a source build of llvmlite and the install
+# fails on an Intel Mac. The ceiling here is llvmlite 0.45.1 -> numba 0.62.x ->
+# numpy < 2.4, which is why numpy is pinned one minor version below upstream and
+# numba is pinned explicitly instead of being resolved implicitly.
+#
+# Everything else matches upstream exactly. Install with:
+#   python3.11 -m venv .venv-openmontage
+#   .venv-openmontage/bin/python -m pip install -r requirements-bmts-lite-macos-intel.txt
+librosa==0.11.0
+numpy==2.3.5
+opencv-python-headless==4.14.0.94
+scipy==1.17.1
+soundfile==0.13.1
+numba==0.62.1
